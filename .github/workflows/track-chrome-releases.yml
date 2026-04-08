@@ -73,3 +73,24 @@ jobs:
             **Version:** `${{ steps.chrome.outputs.version }}`
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Send Slack notification
+        if: steps.compare.outputs.new_release == 'true'
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          payload: |
+            {
+              "text": "🌐 New Chrome Release Detected!",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "🌐 *New Chrome Release Detected!*\n*Channel:* ${{ matrix.channel }}\n*Platform:* ${{ matrix.platform }}\n*Version:* `${{ steps.chrome.outputs.version }}`"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
