@@ -12,7 +12,7 @@ jobs:
     strategy:
       matrix:
         channel: [Stable, Beta, Dev, Canary]
-        platform: [Windows, Mac, Android]
+        platform: [Windows, Mac]
 
     steps:
       - name: Checkout repository
