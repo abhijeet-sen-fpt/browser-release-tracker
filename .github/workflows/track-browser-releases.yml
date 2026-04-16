@@ -101,12 +101,18 @@ jobs:
         id: firefox
         run: |
           RESPONSE=$(curl -s "https://product-details.mozilla.org/1.0/firefox_versions.json")
+          echo "API Response: $RESPONSE"
           if [ "${{ matrix.channel }}" == "Stable" ]; then
             VERSION=$(echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['LATEST_FIREFOX_VERSION'])")
           else
             VERSION=$(echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['LATEST_FIREFOX_RELEASED_DEVEL_VERSION'])")
           fi
+          if [ -z "$VERSION" ]; then
+            echo "Failed to fetch Firefox version"
+            exit 1
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Firefox ${{ matrix.channel }} / ${{ matrix.platform }} → $VERSION"
 
       - name: Read last known version
         id: last
@@ -184,6 +190,7 @@ jobs:
         id: edge
         run: |
           RESPONSE=$(curl -s "https://edgeupdates.microsoft.com/api/products")
+          echo "API Response: $RESPONSE"
           if [ "${{ matrix.channel }}" == "Stable" ]; then
             CHANNEL_NAME="Stable"
           else
@@ -204,7 +211,12 @@ jobs:
                   print(release['ProductVersion'])
                   sys.exit(0)
           ")
+          if [ -z "$VERSION" ]; then
+            echo "Failed to fetch Edge version"
+            exit 1
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Edge ${{ matrix.channel }} / ${{ matrix.platform }} → $VERSION"
 
       - name: Read last known version
         id: last
@@ -220,7 +232,7 @@ jobs:
         id: compare
         run: |
           CURRENT_MAJOR=$(echo "${{ steps.edge.outputs.version }}" | cut -d'.' -f1)
-          LAST_MAJOR=$(echo "${{ steps.edge.outputs.version }}" | cut -d'.' -f1)
+          LAST_MAJOR=$(echo "${{ steps.last.outputs.version }}" | cut -d'.' -f1)
           if [ "$CURRENT_MAJOR" != "$LAST_MAJOR" ]; then
             echo "new_release=true" >> $GITHUB_OUTPUT
           else
@@ -307,7 +319,7 @@ jobs:
             echo "UPDATED:"
             for FILE in updates/*.txt; do
               NAME=$(basename "$FILE" .txt)
-              BROWSER=$(echo "$NAME" | cut -d'-' -f1)
+              BROWSER=$(echo "$NAME" | cut -d'-' -f1 | sed 's/./\u&/')
               CHANNEL=$(echo "$NAME" | cut -d'-' -f2)
               PLATFORM=$(echo "$NAME" | cut -d'-' -f3)
               VERSION=$(cat "$FILE")
@@ -317,11 +329,11 @@ jobs:
             echo "ALL CURRENT VERSIONS:"
             for FILE in versions/*.txt; do
               NAME=$(basename "$FILE" .txt)
-              BROWSER=$(echo "$NAME" | cut -d'-' -f1)
+              BROWSER=$(echo "$NAME" | cut -d'-' -f1 | sed 's/./\u&/')
               CHANNEL=$(echo "$NAME" | cut -d'-' -f2)
               PLATFORM=$(echo "$NAME" | cut -d'-' -f3)
               VERSION=$(cat "$FILE")
-              UPDATE_FILE="updates/${BROWSER}-${CHANNEL}-${PLATFORM}.txt"
+              UPDATE_FILE="updates/$(echo "$NAME" | cut -d'-' -f1)-${CHANNEL}-${PLATFORM}.txt"
               if [ -f "$UPDATE_FILE" ]; then
                 echo "  ★ $BROWSER $CHANNEL / $PLATFORM: $VERSION  ← UPDATED"
               else
