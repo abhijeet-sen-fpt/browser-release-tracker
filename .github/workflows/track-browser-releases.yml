@@ -1,0 +1,357 @@
+name: Track Browser Releases
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  check-chrome-release:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [Stable, Beta]
+        platform: [Windows, Mac]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Fetch latest Chrome version
+        id: chrome
+        run: |
+          RESPONSE=$(curl -s "https://chromiumdash.appspot.com/fetch_releases?channel=${{ matrix.channel }}&platform=${{ matrix.platform }}&num=1")
+          VERSION=$(echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data[0]['version']) if data else sys.exit(1)")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Read last known version
+        id: last
+        run: |
+          FILE="versions/chrome-${{ matrix.channel }}-${{ matrix.platform }}.txt"
+          if [ -f "$FILE" ]; then
+            echo "version=$(cat $FILE)" >> $GITHUB_OUTPUT
+          else
+            echo "version=none" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Compare versions
+        id: compare
+        run: |
+          CURRENT_MAJOR=$(echo "${{ steps.chrome.outputs.version }}" | cut -d'.' -f1)
+          LAST_MAJOR=$(echo "${{ steps.last.outputs.version }}" | cut -d'.' -f1)
+          if [ "$CURRENT_MAJOR" != "$LAST_MAJOR" ]; then
+            echo "new_release=true" >> $GITHUB_OUTPUT
+          else
+            echo "new_release=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update version file
+        if: steps.compare.outputs.new_release == 'true'
+        run: |
+          mkdir -p versions
+          FILE="versions/chrome-${{ matrix.channel }}-${{ matrix.platform }}.txt"
+          echo "${{ steps.chrome.outputs.version }}" > "$FILE"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$FILE"
+          git commit -m "chore: Chrome ${{ matrix.channel }} (${{ matrix.platform }}) → ${{ steps.chrome.outputs.version }}"
+          git pull --rebase
+          git push
+
+      - name: Mark as updated
+        if: steps.compare.outputs.new_release == 'true'
+        run: |
+          mkdir -p updates
+          echo "${{ steps.chrome.outputs.version }}" > "updates/chrome-${{ matrix.channel }}-${{ matrix.platform }}.txt"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add updates/
+          git commit -m "track: mark Chrome ${{ matrix.channel }} ${{ matrix.platform }} as updated" || true
+          git pull --rebase
+          git push
+
+      - name: Create GitHub Release
+        if: steps.compare.outputs.new_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: chrome-${{ matrix.channel }}-${{ matrix.platform }}-${{ steps.chrome.outputs.version }}
+          name: "Chrome ${{ matrix.channel }} ${{ matrix.platform }} ${{ steps.chrome.outputs.version }}"
+          body: |
+            🚀 New Chrome release detected!
+            **Channel:** ${{ matrix.channel }}
+            **Platform:** ${{ matrix.platform }}
+            **Version:** `${{ steps.chrome.outputs.version }}`
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  check-firefox-release:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [Stable, Beta]
+        platform: [Windows, Mac]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Fetch latest Firefox version
+        id: firefox
+        run: |
+          RESPONSE=$(curl -s "https://product-details.mozilla.org/1.0/firefox_versions.json")
+          if [ "${{ matrix.channel }}" == "Stable" ]; then
+            VERSION=$(echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['LATEST_FIREFOX_VERSION'])")
+          else
+            VERSION=$(echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['LATEST_FIREFOX_RELEASED_DEVEL_VERSION'])")
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Read last known version
+        id: last
+        run: |
+          FILE="versions/firefox-${{ matrix.channel }}-${{ matrix.platform }}.txt"
+          if [ -f "$FILE" ]; then
+            echo "version=$(cat $FILE)" >> $GITHUB_OUTPUT
+          else
+            echo "version=none" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Compare versions
+        id: compare
+        run: |
+          CURRENT_MAJOR=$(echo "${{ steps.firefox.outputs.version }}" | cut -d'.' -f1)
+          LAST_MAJOR=$(echo "${{ steps.last.outputs.version }}" | cut -d'.' -f1)
+          if [ "$CURRENT_MAJOR" != "$LAST_MAJOR" ]; then
+            echo "new_release=true" >> $GITHUB_OUTPUT
+          else
+            echo "new_release=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update version file
+        if: steps.compare.outputs.new_release == 'true'
+        run: |
+          mkdir -p versions
+          FILE="versions/firefox-${{ matrix.channel }}-${{ matrix.platform }}.txt"
+          echo "${{ steps.firefox.outputs.version }}" > "$FILE"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$FILE"
+          git commit -m "chore: Firefox ${{ matrix.channel }} (${{ matrix.platform }}) → ${{ steps.firefox.outputs.version }}"
+          git pull --rebase
+          git push
+
+      - name: Mark as updated
+        if: steps.compare.outputs.new_release == 'true'
+        run: |
+          mkdir -p updates
+          echo "${{ steps.firefox.outputs.version }}" > "updates/firefox-${{ matrix.channel }}-${{ matrix.platform }}.txt"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add updates/
+          git commit -m "track: mark Firefox ${{ matrix.channel }} ${{ matrix.platform }} as updated" || true
+          git pull --rebase
+          git push
+
+      - name: Create GitHub Release
+        if: steps.compare.outputs.new_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: firefox-${{ matrix.channel }}-${{ matrix.platform }}-${{ steps.firefox.outputs.version }}
+          name: "Firefox ${{ matrix.channel }} ${{ matrix.platform }} ${{ steps.firefox.outputs.version }}"
+          body: |
+            🦊 New Firefox release detected!
+            **Channel:** ${{ matrix.channel }}
+            **Platform:** ${{ matrix.platform }}
+            **Version:** `${{ steps.firefox.outputs.version }}`
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  check-edge-release:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [Stable, Beta]
+        platform: [Windows, Mac]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Fetch latest Edge version
+        id: edge
+        run: |
+          RESPONSE=$(curl -s "https://edgeupdates.microsoft.com/api/products")
+          if [ "${{ matrix.channel }}" == "Stable" ]; then
+            CHANNEL_NAME="Stable"
+          else
+            CHANNEL_NAME="Beta"
+          fi
+          if [ "${{ matrix.platform }}" == "Windows" ]; then
+            PLATFORM_NAME="Windows"
+          else
+            PLATFORM_NAME="MacOS"
+          fi
+          VERSION=$(echo "$RESPONSE" | python3 -c "
+          import sys,json
+          data=json.load(sys.stdin)
+          for product in data:
+            if product['Product'] == '$CHANNEL_NAME':
+              for release in product['Releases']:
+                if release['Platform'] == '$PLATFORM_NAME':
+                  print(release['ProductVersion'])
+                  sys.exit(0)
+          ")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Read last known version
+        id: last
+        run: |
+          FILE="versions/edge-${{ matrix.channel }}-${{ matrix.platform }}.txt"
+          if [ -f "$FILE" ]; then
+            echo "version=$(cat $FILE)" >> $GITHUB_OUTPUT
+          else
+            echo "version=none" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Compare versions
+        id: compare
+        run: |
+          CURRENT_MAJOR=$(echo "${{ steps.edge.outputs.version }}" | cut -d'.' -f1)
+          LAST_MAJOR=$(echo "${{ steps.edge.outputs.version }}" | cut -d'.' -f1)
+          if [ "$CURRENT_MAJOR" != "$LAST_MAJOR" ]; then
+            echo "new_release=true" >> $GITHUB_OUTPUT
+          else
+            echo "new_release=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update version file
+        if: steps.compare.outputs.new_release == 'true'
+        run: |
+          mkdir -p versions
+          FILE="versions/edge-${{ matrix.channel }}-${{ matrix.platform }}.txt"
+          echo "${{ steps.edge.outputs.version }}" > "$FILE"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$FILE"
+          git commit -m "chore: Edge ${{ matrix.channel }} (${{ matrix.platform }}) → ${{ steps.edge.outputs.version }}"
+          git pull --rebase
+          git push
+
+      - name: Mark as updated
+        if: steps.compare.outputs.new_release == 'true'
+        run: |
+          mkdir -p updates
+          echo "${{ steps.edge.outputs.version }}" > "updates/edge-${{ matrix.channel }}-${{ matrix.platform }}.txt"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add updates/
+          git commit -m "track: mark Edge ${{ matrix.channel }} ${{ matrix.platform }} as updated" || true
+          git pull --rebase
+          git push
+
+      - name: Create GitHub Release
+        if: steps.compare.outputs.new_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: edge-${{ matrix.channel }}-${{ matrix.platform }}-${{ steps.edge.outputs.version }}
+          name: "Edge ${{ matrix.channel }} ${{ matrix.platform }} ${{ steps.edge.outputs.version }}"
+          body: |
+            🌐 New Edge release detected!
+            **Channel:** ${{ matrix.channel }}
+            **Platform:** ${{ matrix.platform }}
+            **Version:** `${{ steps.edge.outputs.version }}`
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  send-summary-email:
+    runs-on: ubuntu-latest
+    needs: [check-chrome-release, check-firefox-release, check-edge-release]
+    if: always()
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Check if any updates happened
+        id: check
+        run: |
+          if [ -d "updates" ] && [ "$(ls -A updates)" ]; then
+            echo "has_updates=true" >> $GITHUB_OUTPUT
+            BROWSERS=""
+            if ls updates/chrome-*.txt 2>/dev/null | grep -q .; then
+              BROWSERS="Chrome"
+            fi
+            if ls updates/firefox-*.txt 2>/dev/null | grep -q .; then
+              BROWSERS="${BROWSERS:+$BROWSERS, }Firefox"
+            fi
+            if ls updates/edge-*.txt 2>/dev/null | grep -q .; then
+              BROWSERS="${BROWSERS:+$BROWSERS, }Edge"
+            fi
+            echo "browsers=$BROWSERS" >> $GITHUB_OUTPUT
+          else
+            echo "has_updates=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build email body
+        id: email
+        if: steps.check.outputs.has_updates == 'true'
+        run: |
+          {
+            echo "Browser versions have been updated!"
+            echo ""
+            echo "UPDATED:"
+            for FILE in updates/*.txt; do
+              NAME=$(basename "$FILE" .txt)
+              BROWSER=$(echo "$NAME" | cut -d'-' -f1)
+              CHANNEL=$(echo "$NAME" | cut -d'-' -f2)
+              PLATFORM=$(echo "$NAME" | cut -d'-' -f3)
+              VERSION=$(cat "$FILE")
+              echo "  ★ $BROWSER $CHANNEL / $PLATFORM → $VERSION"
+            done
+            echo ""
+            echo "ALL CURRENT VERSIONS:"
+            for FILE in versions/*.txt; do
+              NAME=$(basename "$FILE" .txt)
+              BROWSER=$(echo "$NAME" | cut -d'-' -f1)
+              CHANNEL=$(echo "$NAME" | cut -d'-' -f2)
+              PLATFORM=$(echo "$NAME" | cut -d'-' -f3)
+              VERSION=$(cat "$FILE")
+              UPDATE_FILE="updates/${BROWSER}-${CHANNEL}-${PLATFORM}.txt"
+              if [ -f "$UPDATE_FILE" ]; then
+                echo "  ★ $BROWSER $CHANNEL / $PLATFORM: $VERSION  ← UPDATED"
+              else
+                echo "    $BROWSER $CHANNEL / $PLATFORM: $VERSION"
+              fi
+            done
+          } > /tmp/email_body.txt
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          cat /tmp/email_body.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Send email
+        if: steps.check.outputs.has_updates == 'true'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "🌐 Browser Release Update — ${{ steps.check.outputs.browsers }} updated"
+          to: ${{ secrets.TEAMS_EMAIL }}
+          from: Browser Release Tracker
+          body: ${{ steps.email.outputs.body }}
+
+      - name: Clear updates folder
+        if: steps.check.outputs.has_updates == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          rm -f updates/*.txt
+          git add updates/
+          git commit -m "chore: clear updates folder after notification sent" || true
+          git push
